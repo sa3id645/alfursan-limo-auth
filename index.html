@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>الفرسان ليموزين | إدارة التشغيل السحابي والمحلي</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- شاشة تسجيل الدخول -->
+    <div id="authModal" class="auth-overlay">
+      <div class="auth-box">
+        <h2>✦ تسجيل الدخول</h2>
+        <div class="auth-sub">الفرسان ليموزين — ادخل بحسابك للمتابعة</div>
+        <form id="loginForm">
+          <div class="grid auth-grid">
+            <div class="field">
+              <label for="loginEmail">البريد الإلكتروني</label>
+              <input
+                id="loginEmail"
+                type="email"
+                required
+                placeholder="name@example.com"
+              />
+            </div>
+            <div class="field">
+              <label for="loginPassword">كلمة المرور</label>
+              <input
+                id="loginPassword"
+                type="password"
+                required
+                placeholder="••••••••"
+              />
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="gold full-width" type="submit">دخول</button>
+          </div>
+          <div id="authError" class="auth-error"></div>
+        </form>
+      </div>
+    </div>
+
+    <header>
+      <div class="brand">✦ الفرسان ليموزين</div>
+      <div class="sub">إدارة التشغيل السحابي والمحلي • مزامنة لحظية</div>
+    </header>
+
+    <main>
+      <div class="toolbar">
+        <button class="gold" onclick="showSection('add')">
+          ＋ تسجيل رحلة جديدة
+        </button>
+        <button class="light admin-only" onclick="exportCSV()">
+          تصدير Excel / CSV
+        </button>
+        <button class="light sync-btn" onclick="loadTrips()">
+          🔄 تحديث سحابي
+        </button>
+        <button class="light admin-only" onclick="backup()">
+          نسخة احتياطية محلية
+        </button>
+        <label class="btn light admin-only" for="restoreFile">
+          استعادة نسخة
+        </label>
+        <input
+          id="restoreFile"
+          type="file"
+          accept="application/json"
+          hidden
+          onchange="restore(event)"
+        />
+
+        <div id="userBar" class="user-badge hidden">
+          <span id="currentUserEmail"></span>
+          <span id="currentUserRole" class="role-pill"></span>
+          <button class="danger logout-btn" onclick="logoutUser()">خروج</button>
+        </div>
+      </div>
+
+      <!-- بطاقات الملخص للأدمن فقط -->
+      <div class="cards admin-only">
+        <div class="card">
+          <div class="k">إجمالي قيمة الرحلات</div>
+          <div class="v goldtxt" id="totalRevenue">0 ج.م</div>
+        </div>
+        <div class="card">
+          <div class="k">إجمالي التحصيل الفعلي</div>
+          <div class="v greentxt" id="totalCollected">0 ج.م</div>
+        </div>
+        <div class="card">
+          <div class="k">إجمالي المصاريف وأجرة السائق</div>
+          <div class="v" id="totalCosts">0 ج.م</div>
+        </div>
+        <div class="card">
+          <div class="k">صافي التشغيل (ربح السيارات)</div>
+          <div class="v greentxt" id="totalNet">0 ج.م</div>
+        </div>
+        <div class="card">
+          <div class="k">مبالغ متبقية للتحصيل من العملاء</div>
+          <div class="v redtxt" id="totalDue">0 ج.م</div>
+        </div>
+        <div class="card">
+          <div class="k">إجمالي العُهد المسلمة للسائقين</div>
+          <div class="v bluetxt" id="totalCustody">0 ج.م</div>
+        </div>
+        <div class="card">
+          <div class="k">إجمالي مصاريف التشغيل</div>
+          <div class="v" id="totalExpenses">0 ج.م</div>
+        </div>
+        <div class="card">
+          <div class="k">إجمالي أجور السائقين</div>
+          <div class="v goldtxt" id="totalWages">0 ج.م</div>
+        </div>
+      </div>
+
+      <!-- التبويبات: المستخدم العادي يرى آخر الرحلات وتسجيل رحلة فقط -->
+      <div class="tabs">
+        <button
+          class="active"
+          data-tab="dashboard"
+          onclick="showSection('dashboard')"
+        >
+          آخر الرحلات المسجلة
+        </button>
+        <button data-tab="add" onclick="showSection('add')">تسجيل رحلة</button>
+        <button class="admin-only" data-tab="trips" onclick="showSection('trips')">
+          سجل الرحلات
+        </button>
+        <button class="admin-only" data-tab="cars" onclick="showSection('cars')">
+          ملخص السيارات
+        </button>
+        <button
+          class="admin-only"
+          data-tab="carDetail"
+          onclick="showSection('carDetail')"
+        >
+          حساب كل سيارة على حدة
+        </button>
+        <button
+          class="admin-only"
+          data-tab="drivers"
+          onclick="showSection('drivers')"
+        >
+          حسابات السائقين والتصفية
+        </button>
+        <button
+          class="admin-only"
+          data-tab="driverDetail"
+          onclick="showSection('driverDetail')"
+        >
+          كشف تصفية السائق
+        </button>
+      </div>
+
+      <section id="dashboard" class="section active">
+        <div class="panel">
+          <h2>آخر الرحلات المسجلة</h2>
+          <div class="tablewrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>التاريخ</th>
+                  <th>السيارة</th>
+                  <th>السائق</th>
+                  <th>خط السير</th>
+                  <th>قيمة الرحلة</th>
+                  <th>المحصل</th>
+                  <th class="admin-only">العهدة</th>
+                  <th class="admin-only">صافي التوريد من السائق</th>
+                  <th class="admin-only">صافي ربح الرحلة</th>
+                </tr>
+              </thead>
+              <tbody id="recentRows"></tbody>
+            </table>
+          </div>
+          <div class="note admin-only">
+            <strong>معادلة تصفية السائق:</strong> ما يُطلب توريده من السائق =
+            (المبلغ المحصل من العميل + العهدة المستلمة منك) − (مصاريف التشغيل
+            التي دفعها السائق + أجرة السائق).
+          </div>
+        </div>
+      </section>
+
+      <section id="add" class="section">
+        <div class="panel">
+          <h2 id="formTitle">تسجيل رحلة جديدة</h2>
+          <form id="tripForm">
+            <input type="hidden" id="editId" />
+            <div class="grid">
+              <div class="field">
+                <label for="date">تاريخ الرحلة *</label>
+                <input type="date" id="date" required />
+              </div>
+              <div class="field">
+                <label for="car">السيارة / الموديل *</label>
+                <input
+                  id="car"
+                  list="carsList"
+                  placeholder="مثال: جيتور X70"
+                  required
+                />
+                <datalist id="carsList"></datalist>
+              </div>
+              <div class="field">
+                <label for="driver">اسم السائق</label>
+                <input
+                  id="driver"
+                  list="driversList"
+                  placeholder="اسم السائق"
+                />
+                <datalist id="driversList"></datalist>
+              </div>
+              <div class="field">
+                <label for="from">من *</label>
+                <input id="from" placeholder="مكان التحرك" required />
+              </div>
+              <div class="field">
+                <label for="to">إلى *</label>
+                <input id="to" placeholder="الوجهة" required />
+              </div>
+              <div class="field">
+                <label for="fare">قيمة الرحلة المتفق عليها (ج.م) *</label>
+                <input type="number" id="fare" min="0" step="0.01" required />
+              </div>
+              <div class="field">
+                <label for="collection">حالة التحصيل</label>
+                <select id="collection">
+                  <option value="تم التحصيل">تم التحصيل</option>
+                  <option value="تحصيل جزئي">تحصيل جزئي</option>
+                  <option value="بدون تحصيل">بدون تحصيل</option>
+                  <option value="تحصيل زائد">تحصيل زائد</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="collected">المبلغ المحصل من العميل (ج.م)</label>
+                <input
+                  type="number"
+                  id="collected"
+                  min="0"
+                  step="0.01"
+                  value="0"
+                />
+              </div>
+              <div class="field admin-only">
+                <label for="custody" class="custody-label">
+                  العهدة المسلمة للسائق (ج.م)
+                </label>
+                <input
+                  type="number"
+                  id="custody"
+                  min="0"
+                  step="0.01"
+                  value="0"
+                />
+              </div>
+              <div class="field">
+                <label for="fuel">بنزين (ج.م)</label>
+                <input type="number" id="fuel" min="0" step="0.01" value="0" />
+              </div>
+              <div class="field">
+                <label for="tolls">بوابات / طرق (ج.م)</label>
+                <input type="number" id="tolls" min="0" step="0.01" value="0" />
+              </div>
+              <div class="field">
+                <label for="permits">تصاريح (ج.م)</label>
+                <input
+                  type="number"
+                  id="permits"
+                  min="0"
+                  step="0.01"
+                  value="0"
+                />
+              </div>
+              <div class="field">
+                <label for="other">مصاريف أخرى (ج.م)</label>
+                <input type="number" id="other" min="0" step="0.01" value="0" />
+              </div>
+              <div class="field admin-only">
+                <label for="wage">أجرة السائق / مستحقاته (ج.م)</label>
+                <input type="number" id="wage" min="0" step="0.01" value="0" />
+              </div>
+              <div class="field wide">
+                <label for="notes">ملاحظات</label>
+                <textarea id="notes" placeholder="أي تفاصيل إضافية"></textarea>
+              </div>
+            </div>
+            <div class="form-actions">
+              <button class="gold" type="submit">حفظ الرحلة</button>
+              <button type="button" class="light" onclick="resetForm()">
+                إلغاء / تفريغ
+              </button>
+            </div>
+            <div class="note live-calc-box admin-only" id="liveCalc"></div>
+          </form>
+        </div>
+      </section>
+
+      <!-- أقسام الأدمن فقط -->
+      <section id="trips" class="section admin-only">
+        <div class="panel">
+          <h2>سجل الرحلات</h2>
+          <div class="filters">
+            <input
+              id="search"
+              placeholder="بحث بالسيارة أو السائق أو خط السير"
+            />
+            <input type="month" id="monthFilter" />
+            <select id="collectionFilter">
+              <option value="">كل حالات التحصيل</option>
+              <option>تم التحصيل</option>
+              <option>تحصيل جزئي</option>
+              <option>بدون تحصيل</option>
+              <option>تحصيل زائد</option>
+            </select>
+          </div>
+          <div class="tablewrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>التاريخ</th>
+                  <th>السيارة / السائق</th>
+                  <th>خط السير</th>
+                  <th>قيمة الرحلة</th>
+                  <th>المحصل</th>
+                  <th>العهدة</th>
+                  <th>المصاريف</th>
+                  <th>أجرة السائق</th>
+                  <th>صافي التوريد من السائق</th>
+                  <th>صافي ربح الرحلة</th>
+                  <th>إجراءات</th>
+                </tr>
+              </thead>
+              <tbody id="tripRows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="cars" class="section admin-only">
+        <div class="panel">
+          <div class="section-head">
+            <h2 class="no-margin">ملخص وإجمالي حسابات السيارات</h2>
+            <div class="filters no-margin">
+              <input type="month" id="carsSummaryMonth" />
+              <button
+                class="light"
+                onclick="clearFilter('carsSummaryMonth', render)"
+              >
+                كل الشهور
+              </button>
+              <button class="light" onclick="exportCarsCSV()">تصدير CSV</button>
+            </div>
+          </div>
+          <div class="cards">
+            <div class="card">
+              <div class="k">عدد السيارات العاملة</div>
+              <div class="v" id="csTotalCars">0</div>
+            </div>
+            <div class="card">
+              <div class="k">إجمالي رحلات السيارات</div>
+              <div class="v" id="csTotalTrips">0</div>
+            </div>
+            <div class="card">
+              <div class="k">إجمالي إيرادات السيارات</div>
+              <div class="v goldtxt" id="csTotalFares">0 ج.م</div>
+            </div>
+            <div class="card">
+              <div class="k">صافي ربح كل السيارات</div>
+              <div class="v greentxt" id="csTotalNet">0 ج.م</div>
+            </div>
+          </div>
+          <div class="tablewrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>السيارة</th>
+                  <th>عدد الرحلات</th>
+                  <th>السائقون</th>
+                  <th>قيمة الرحلات</th>
+                  <th>التحصيل</th>
+                  <th>مصاريف التشغيل</th>
+                  <th>أجرة السائقين</th>
+                  <th>صافي ربح السيارة</th>
+                  <th>متبقي / زيادة</th>
+                  <th>كشف حساب</th>
+                </tr>
+              </thead>
+              <tbody id="carRows"></tbody>
+              <tfoot id="carTotalsFoot"></tfoot>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="carDetail" class="section admin-only">
+        <div class="panel">
+          <div class="print-header">
+            <h2 class="print-title">✦ الفرسان ليموزين — كشف حساب سيارة</h2>
+            <div id="carPrintSubTitle" class="print-subtitle"></div>
+          </div>
+          <div class="section-head-sm">
+            <h2 class="no-margin">حساب كل سيارة على حدة</h2>
+            <div class="no-print action-row">
+              <button class="light" onclick="exportSingleCarCSV()">
+                تصدير CSV
+              </button>
+              <button class="gold" onclick="window.print()">طباعة / PDF</button>
+            </div>
+          </div>
+          <div class="filters">
+            <select id="carPicker">
+              <option value="">اختر السيارة</option>
+            </select>
+            <input type="month" id="carMonth" />
+            <button
+              class="light"
+              onclick="clearFilter('carMonth', renderCarDetail)"
+            >
+              كل الفترات
+            </button>
+          </div>
+          <div class="cards mt-12">
+            <div class="card">
+              <div class="k">عدد الرحلات</div>
+              <div class="v" id="cdCount">0</div>
+            </div>
+            <div class="card">
+              <div class="k">إجمالي القيمة</div>
+              <div class="v goldtxt" id="cdFare">0 ج.م</div>
+            </div>
+            <div class="card">
+              <div class="k">إجمالي التحصيل</div>
+              <div class="v greentxt" id="cdCollected">0 ج.م</div>
+            </div>
+            <div class="card">
+              <div class="k">المتبقي للتحصيل</div>
+              <div class="v redtxt" id="cdDue">0 ج.م</div>
+            </div>
+            <div class="card">
+              <div class="k">المصاريف</div>
+              <div class="v" id="cdExpenses">0 ج.م</div>
+            </div>
+            <div class="card">
+              <div class="k">أجور السائقين</div>
+              <div class="v" id="cdWages">0 ج.م</div>
+            </div>
+            <div class="card">
+              <div class="k">متوسط ربح الرحلة</div>
+              <div class="v" id="cdAvgNet">0 ج.م</div>
+            </div>
+            <div class="card">
+              <div class="k">صافي ربح السيارة</div>
+              <div class="v greentxt" id="cdNet">0 ج.م</div>
+            </div>
+          </div>
+          <div class="grid mb-18">
+            <div class="card soft-card">
+              <div class="k card-heading">تفصيل المصاريف:</div>
+              <div class="chips" id="cdExpenseBreakdown"></div>
+            </div>
+            <div class="card soft-card span-two">
+              <div class="k card-heading">السائقون على هذه السيارة:</div>
+              <div class="chips" id="cdDriversList"></div>
+            </div>
+          </div>
+          <div class="tablewrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>التاريخ</th>
+                  <th>السائق</th>
+                  <th>خط السير</th>
+                  <th>القيمة</th>
+                  <th>المحصل</th>
+                  <th>المصاريف</th>
+                  <th>الأجرة</th>
+                  <th>صافي الربح</th>
+                  <th>المتبقي</th>
+                  <th>ملاحظات</th>
+                </tr>
+              </thead>
+              <tbody id="carDetailRows"></tbody>
+              <tfoot id="carDetailFoot"></tfoot>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="drivers" class="section admin-only">
+        <div class="panel">
+          <div class="section-head">
+            <h2 class="no-margin">ملخص وتصفية السائقين</h2>
+            <div class="filters no-margin">
+              <input type="month" id="driversSummaryMonth" />
+              <button
+                class="light"
+                onclick="clearFilter('driversSummaryMonth', render)"
+              >
+                كل الشهور
+              </button>
+              <button class="light" onclick="exportDriversCSV()">
+                تصدير CSV
+              </button>
+            </div>
+          </div>
+          <div class="cards">
+            <div class="card">
+              <div class="k">عدد السائقين</div>
+              <div class="v" id="dsTotalDrivers">0</div>
+            </div>
+            <div class="card">
+              <div class="k">إجمالي المحصل + العُهد</div>
+              <div class="v bluetxt" id="dsTotalInHand">0 ج.م</div>
+            </div>
+            <div class="card">
+              <div class="k">إجمالي المصاريف والأجور</div>
+              <div class="v goldtxt" id="dsTotalDeduct">0 ج.م</div>
+            </div>
+            <div class="card highlight-box">
+              <div class="k highlight-title">صافي المطلوب استلامه</div>
+              <div class="v greentxt" id="dsTotalSettle">0 ج.م</div>
+            </div>
+          </div>
+          <div class="tablewrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>اسم السائق</th>
+                  <th>الرحلات</th>
+                  <th>المحصل</th>
+                  <th>العهد</th>
+                  <th>إجمالي بيد السائق</th>
+                  <th>المصاريف</th>
+                  <th>الأجور</th>
+                  <th>الصافي المطلوب (التوريد)</th>
+                  <th>تقرير</th>
+                </tr>
+              </thead>
+              <tbody id="driverRows"></tbody>
+              <tfoot id="driverTotalsFoot"></tfoot>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="driverDetail" class="section admin-only">
+        <div class="panel">
+          <div class="print-header">
+            <h2 class="print-title">✦ الفرسان ليموزين — كشف تصفية سائق</h2>
+            <div id="driverPrintSubTitle" class="print-subtitle"></div>
+          </div>
+          <div class="section-head-sm">
+            <h2 class="no-margin">كشف تصفية حساب السائق</h2>
+            <div class="no-print action-row">
+              <button class="light" onclick="exportSingleDriverCSV()">
+                تصدير CSV
+              </button>
+              <button class="gold" onclick="window.print()">طباعة / PDF</button>
+            </div>
+          </div>
+          <div class="filters">
+            <select id="driverPicker">
+              <option value="">اختر السائق</option>
+            </select>
+            <span class="filter-label">من:</span>
+            <input type="date" id="driverFromDate" />
+            <span class="filter-label">إلى:</span>
+            <input type="date" id="driverToDate" />
+            <span class="filter-label">الشهر:</span>
+            <input type="month" id="driverMonth" />
+            <button class="light" onclick="resetDriverFilters()">
+              كل الفترات
+            </button>
+          </div>
+          <div class="cards mt-12">
+            <div class="card">
+              <div class="k">الرحلات</div>
+              <div class="v" id="ddCount">0</div>
+            </div>
+            <div class="card">
+              <div class="k">المحصل من العملاء</div>
+              <div class="v" id="ddCollected">0 ج.م</div>
+            </div>
+            <div class="card">
+              <div class="k">العهد المسلمة</div>
+              <div class="v bluetxt" id="ddCustody">0 ج.م</div>
+            </div>
+            <div class="card summary-card">
+              <div class="k bold-label">إجمالي في ذمة السائق</div>
+              <div class="v" id="ddTotalInHand">0 ج.م</div>
+            </div>
+            <div class="card">
+              <div class="k">المصاريف المدفوعة</div>
+              <div class="v" id="ddExpenses">0 ج.م</div>
+            </div>
+            <div class="card">
+              <div class="k">أجوره ومستحقاته</div>
+              <div class="v goldtxt" id="ddWages">0 ج.م</div>
+            </div>
+            <div class="card summary-card">
+              <div class="k bold-label">إجمالي الخصم</div>
+              <div class="v" id="ddTotalDeduct">0 ج.م</div>
+            </div>
+            <div class="card highlight-box">
+              <div class="k highlight-title" id="ddSettleLabel">
+                الصافي المطلوب
+              </div>
+              <div class="v greentxt" id="ddSettle">0 ج.م</div>
+            </div>
+          </div>
+          <div class="card mb-18 soft-card">
+            <div class="k card-heading">السيارات المستخدمة:</div>
+            <div class="chips" id="ddCarsList"></div>
+          </div>
+          <div class="tablewrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>التاريخ</th>
+                  <th>السيارة</th>
+                  <th>خط السير</th>
+                  <th>القيمة</th>
+                  <th>المحصل</th>
+                  <th>العهدة</th>
+                  <th>المصاريف</th>
+                  <th>الأجرة</th>
+                  <th>صافي المطلوب</th>
+                  <th>ملاحظات</th>
+                </tr>
+              </thead>
+              <tbody id="driverDetailRows"></tbody>
+              <tfoot id="driverDetailFoot"></tfoot>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>الفرسان ليموزين © — متصل بقاعدة البيانات السحابية بأمان تام</footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>
